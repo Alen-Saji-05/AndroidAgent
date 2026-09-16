@@ -1,0 +1,11 @@
+# OCR backend -- optional. Without it the pipeline runs with NullOCR: elements
+# are still detected, just unlabelled. See decisions.md D9.
+#
+# RapidOCR is the default: measurably better box accuracy than PaddleOCR 3.7 on
+# mobile-resolution captures (D12), and no paddlepaddle dependency.
+rapidocr>=3.9.0
+onnxruntime>=1.18.0
+
+# PaddleOCR is supported as an alternate backend but NOT recommended -- see D12.
+# paddleocr>=2.7.0
+# paddlepaddle>=2.6.0
