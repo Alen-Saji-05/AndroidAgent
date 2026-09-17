@@ -100,19 +100,51 @@ coordinate sanity — tap centres inside their own boxes, labels fused rather th
 — with explicit regressions for both bugs found. **39 tests**, of which 28 still run
 anywhere without weights.
 
+## Phase 4 — The Planner, and the first LLM in the loop
+
+**2026-09-17.** With perception producing a stable element list, work moved to the
+**Planner** — the component that turns "book a cab to the airport" into an ordered list of
+subgoals. It is the project's first LLM-dependent piece, which changed the shape of the
+work: nondeterministic output, an API dependency, and prompt engineering, none of which
+perception had.
+
+The central design question was answered before any code: **do you plan the whole task
+upfront, or decide each step reactively?** Both fail. A static script breaks when the real
+UI differs from the guess; pure reactivity has no spine and loops. The Planner does neither
+— a coarse decomposition once, then reassessment against the live screen after every step
+([D14](decisions.md)). A scripted end-to-end walk exercised the hard case: a login prompt
+appears mid-task, the plan revises its tail while keeping already-satisfied subgoals
+immutable, and execution continues.
+
+Two decisions carried the project's constraints into the new component. The
+**confirmation gate for sensitive actions is enforced in code, not trusted to the model**
+([D15](decisions.md)) — the model may flag a payment step, but only the loop's own check
+lets it proceed, so the human-in-the-loop rule is structural. And the **screen text fed to
+the planner is treated as untrusted data** ([D16](decisions.md)): an app can render a
+sentence aimed at hijacking the agent, so this is the project's first prompt-injection
+surface, and the confirmation gate doubles as its backstop.
+
+Two patterns were lifted wholesale from perception because they had already proven out: a
+**pluggable backend** with a no-network stub for tests (`NullPlanner`, the analogue of
+`NullOCR`), and **forced-JSON output**. Gemini Flash was chosen over Pro because the
+reassess loop calls the model every step, so speed and cost dominate ([D17](decisions.md)).
+The result shipped with 26 model-free tests driven by scripted responses — the logic tested
+without a key or a network, exactly as perception's stubs allowed.
+
 ## Where things stand
 
-One of seven components is built and verified end-to-end. Perception emits a stable
-`UIElement` schema that the accessibility path is expected to match, so the two can later
-be reconciled rather than compete.
+Two of seven components are built. Perception emits a stable `UIElement` schema; the
+Planner consumes it (via a compact screen digest) and produces a revisable subgoal plan.
+Both were built the same way — pluggable backend, stub-driven tests, JSON contracts — and
+that discipline is now the house style rather than a one-off.
 
-What Phase 3 changed about the risk picture: the schema and the fusion logic held up under
-real data, and the pluggable-backend bet paid off immediately. What it did not resolve is
-**tuning confidence** — the only fixture is synthetic, so every threshold is calibrated
-against a screen drawn with OpenCV rather than captured from a device
-([D7](decisions.md)). Real screenshots are the next meaningful step, and they will likely
-move several constants.
+The gap between "built" and "working" is now explicit: there is **no control loop**. The
+Planner's `decompose` and `reassess` exist and are unit-tested, but nothing yet drives
+perceive → reassess → execute → verify, because the Executor and Verifier do not exist. The
+Planner's `reassess` is therefore unverified against a real model end-to-end.
 
-Also outstanding: on-device export remains deferred ([D10](decisions.md)), and cold-run
-latency of ~9s on CPU is far too slow for a control loop that perceives after every
-action. Neither blocks building the planner; both block a usable product.
+Carried forward from earlier phases: perception thresholds are still tuned against one
+synthetic screen ([D7](decisions.md)); on-device inference is deferred for both the detector
+and the LLM ([D10](decisions.md)); and cold-run perception latency of ~9s on CPU is far too
+slow for a loop that perceives after every action. None block building the next component;
+all block a usable product.

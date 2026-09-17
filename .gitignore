@@ -9,3 +9,8 @@ out/
 *.egg-info/
 .pytest_cache/
 out/
+
+# secrets - never commit
+.env
+*.env
+!.env.example

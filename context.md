@@ -110,7 +110,7 @@ Refined from the abstract during implementation:
 |---|---|
 | Screen perception — vision path | **Built, verified end-to-end** ([perception/](perception/README.md)) |
 | Screen perception — accessibility tree | Not started |
-| Planner agent | Not started |
+| Planner agent | **Built** (decompose + reassess); no control loop yet ([planner/](planner/README.md)) |
 | Executor agent | Not started |
 | Verifier agent | Not started |
 | Shared state / memory | Not started |

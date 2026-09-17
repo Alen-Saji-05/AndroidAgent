@@ -1,0 +1,8 @@
+# Planner LLM backend -- optional, like the OCR backend.
+# Without it the Planner falls back to NullPlanner (echo plans, no reasoning),
+# so the state-machine tests run with no key and no network. See decisions D9/D12
+# for why the backend is pluggable.
+google-generativeai>=0.8.0
+
+# .env loading (optional, but how GEMINI_API_KEY gets picked up from a file)
+python-dotenv>=1.0.0

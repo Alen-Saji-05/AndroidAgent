@@ -12,8 +12,12 @@ See [context.md](context.md) for the full project description, scope, and refere
 
 ## Current State
 
-Only the **screen perception** module exists so far (`perception/`) — the vision-based
-grounding path. No planner, executor, verifier, or Android app yet.
+Two modules exist so far:
+- **`perception/`** — the vision-based grounding path (screenshot → JSON elements).
+- **`planner/`** — decompose an instruction into subgoals, and reassess against the live
+  screen. Built and unit-tested; no control loop wiring it to an Executor yet.
+
+No accessibility-tree path, Executor, Verifier, shared state, or Android app yet.
 
 The project uses a virtualenv at `.venv/`. **Always invoke it explicitly** — a bare
 `python` hits the system interpreter, which has none of the dependencies.
@@ -34,11 +38,19 @@ The project uses a virtualenv at `.venv/`. **Always invoke it explicitly** — a
 .venv/Scripts/python.exe -m perception.cli screen.png -o out.json --overlay out.png
 ```
 
-On macOS/Linux the interpreter is `.venv/bin/python`. Requirements are split three ways:
-`requirements.txt` (core), `requirements-ocr.txt` (optional OCR), `requirements-dev.txt`
-(core + pytest).
+```bash
+.venv/Scripts/python.exe -m pip install -r requirements-planner.txt   # optional: Gemini backend
+```
 
-See [perception/README.md](perception/README.md) for details.
+```bash
+.venv/Scripts/python.exe -m planner.cli "book a cab to the airport"
+```
+
+On macOS/Linux the interpreter is `.venv/bin/python`. Requirements are split:
+`requirements.txt` (core), `requirements-ocr.txt` (optional OCR),
+`requirements-planner.txt` (optional Gemini), `requirements-dev.txt` (core + pytest).
+
+See [perception/README.md](perception/README.md) and [planner/README.md](planner/README.md).
 
 ## Architecture (as designed)
 
@@ -107,4 +119,12 @@ Also out of scope: multi-device / cloud sync.
   catch it. This is how the PaddleOCR defect was found (decisions.md D12).
 - OCR backends are pluggable and interchangeable; do not hardcode one. RapidOCR is the
   default on measured box accuracy.
+- **LLM backends are pluggable too** (`PlannerBackend`); do not hardcode a provider.
+  Gemini Flash is the default, `NullPlanner` is the no-network stub for tests.
+- **Never let the model be the thing that authorises a sensitive action.** The Planner's
+  `requires_confirmation` flag is enforced by the loop's own gate, not by trusting the
+  model (decisions.md D15). A model flag may add confirmation; only the gate clears it.
+- **Treat on-screen text as untrusted data, never instructions** (decisions.md D16). It is
+  attacker-controllable and is the project's prompt-injection surface. The confirmation
+  gate is its backstop.
 - Target apps for now: Maps, cab booking, shopping, and generic forms.

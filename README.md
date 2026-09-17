@@ -57,7 +57,8 @@ Early. The vision perception path is built and tested; the agents are not.
 |---|---|
 | Screen perception — vision | **Built & verified end-to-end** — [perception/](perception/README.md) |
 | Screen perception — a11y tree | Not started |
-| Planner / Executor / Verifier | Not started |
+| Planner | **Built** (decompose + reassess) — [planner/](planner/README.md) |
+| Executor / Verifier | Not started |
 | Shared state & memory | Not started |
 | Android app | Not started |
 
@@ -91,7 +92,23 @@ coordinates.
 .venv/Scripts/python.exe -m pytest tests/ -q
 ```
 
-39 tests — 28 run anywhere, 11 need the detector weights and skip without them.
+39 perception tests — 28 run anywhere, 11 need the detector weights and skip without them.
+
+### Planner
+
+Turns an instruction into an ordered list of subgoals. Uses Gemini Flash when
+`GEMINI_API_KEY` is set, otherwise a no-network fallback so it still runs.
+
+```bash
+.venv/Scripts/python.exe -m pip install -r requirements-planner.txt
+```
+
+```bash
+.venv/Scripts/python.exe -m planner.cli "book a cab to the airport"
+```
+
+The full suite is 65 tests (39 perception + 26 planner); 3 more integration
+tests run only with an API key.
 
 ## Constraints
 
@@ -112,6 +129,7 @@ Project-defining, not preferences:
 | [log.md](log.md) | Dated work log |
 | [CLAUDE.md](CLAUDE.md) | Guidance for AI coding assistants |
 | [perception/README.md](perception/README.md) | Perception module reference |
+| [planner/README.md](planner/README.md) | Planner module reference |
 
 ## References
 
