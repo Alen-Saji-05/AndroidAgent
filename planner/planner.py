@@ -110,6 +110,15 @@ class Planner:
         if plan.status == PlanStatus.AWAITING_CONFIRMATION:
             plan.status = PlanStatus.IN_PROGRESS
 
+    def advance(self, plan: Plan, reason: str = "") -> None:
+        """Mark the active subgoal satisfied and move on, without an LLM round-trip.
+
+        The executor calls this when it *knows* a step completed — e.g. it issued
+        an app-launch intent, or the grounder judged the subgoal already met — so
+        a conservative planner cannot stall the loop by repeatedly retrying.
+        """
+        self._apply(plan, PlanUpdate(UpdateKind.ADVANCE, reason or "executor advanced"))
+
     # -- internals ------------------------------------------------------
     def _apply(self, plan: Plan, update: PlanUpdate) -> None:
         active = plan.active

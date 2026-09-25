@@ -5,6 +5,88 @@ Dated, append-only. Newest first. Milestones are summarised in
 
 ---
 
+## 26 September - LLM Executor (Groq), and the loop that finally plays a song
+
+Built the LLM Executor and drove real multi-step tasks to completion on a physical phone.
+
+**LLM grounder** ([D21](decisions.md)). `GroqGrounder` grounds by reasoning over a labelled
+element list instead of keyword-matching. Groq (`openai/gpt-oss-120b`) returns a structured
+action in ~0.8s. Pluggable behind a `Grounder` protocol; `HeuristicGrounder` is the offline
+fallback. (The user said "grok"; the key was a Groq key - different service, and a good fit
+for its low latency.)
+
+**Loop robustness** ([D22](decisions.md)), every fix from a real run that failed:
+- wake the device first (a locked/asleep screen stalled everything);
+- launch an app once per subgoal (relaunching reset it to a splash);
+- launching auto-advances the "open app" subgoal (added `Planner.advance`);
+- a retry only counts toward "blocked" when the screen did not change, so a multi-step
+  subgoal is not killed mid-progress.
+
+**Verified on hardware:**
+- `open chrome and search for pizza` ✓
+- `open spotify and search for kendrick lamar` ✓
+- `open spotify and play the song tv off` ✓  (five steps; the heuristic never finished it)
+
+The screenshots show the song actually playing. The LLM picked Spotify's real search box
+(perception had classified it as a button) and the correct song row - exactly what keyword
+grounding could not do.
+
+**Also fixed on the way (all heuristic-parsing gaps found on device):** app-name buried in
+a phrase, quotes in the type target, "into the search bar" over-capture, the search box vs
+the bottom "Search" nav tab, and "song X" leaking the word "song".
+
+Tests: **97 offline** (39 perception + 26 planner + 32 executor). New Groq grounder tested
+with the HTTP call stubbed - no key needed in CI.
+
+**Not done:** grounding is text-digest only (no vision), so bare unlabelled icons outside
+app-launch still cannot be tapped; `google-generativeai` remains EOL debt (D17).
+
+---
+
+## 26 September - Phase 0: ADB control loop, end to end on stubs
+
+Built `executor/` - the dev harness that finally ties perception + planner into a working
+`perceive -> plan -> ground -> (confirm) -> execute -> verify` loop, driving a device over
+ADB. No Android app yet; that is Phase 1.
+
+**The reframing** ([D18](decisions.md)): the docs' "issue actions as ADB shell commands"
+works for a computer driving a phone, not for an app driving itself. On-device execution
+without root/OS-mod is **AccessibilityService**. So ADB is the harness; the app will use
+AccessibilityService (which is also the primary perception path). The `Action` model is
+shared, so planner/grounding/loop don't change when execution moves on-device.
+
+**Added**
+
+| File | Role |
+|---|---|
+| `adb.py` | `SubprocessADB` + `FakeADB`; screencap, shell |
+| `actions.py` | Tap/LongPress/Swipe/TypeText/KeyPress/Wait -> ADB `input` args |
+| `executor.py` | `Executor.execute` |
+| `grounding.py` | subgoal + screen -> Action (keyword heuristic) |
+| `loop.py` | `AgentLoop` control loop + confirmation gate |
+| `cli.py` | `python -m executor.cli "..."` against a device |
+
+**Proven on stubs:** a full scripted cab-booking run drove the fake device to completion -
+tapped the destination field, typed, tapped the ride, and the **confirmation gate fired on
+the sensitive "Confirm" step only**, executing nothing until approved. The actual ADB
+commands emitted were correct (`input tap`, `input text ...%s...`, `input keyevent 66`).
+
+**Bug found and fixed:** a button literally labelled "Go"/"Open"/"Set" could never ground -
+those words were stopwords, stripped from both the subgoal and the label. Split filler
+(always stripped) from action verbs (stripped from the subgoal only, and not if it empties
+the intent). ([D19](decisions.md))
+
+**Grounding is heuristic on purpose** - keeps a second Gemini call out of the loop while it
+is proven; the model-based Executor slots in behind the same `ground()` later.
+
+Tests: **18 executor** (mapping, grounding, loop, gate), all on fakes. Offline suite now
+**83 passing** (39 perception + 26 planner + 18 executor).
+
+**Not done:** not run against a real device here (no adb in this env); LLM grounding;
+a real Verifier (currently a keyword hint feeding reassess).
+
+---
+
 ## 17 September - Gemini backend wired up and verified live
 
 Connected the real Gemini backend and ran the Planner end to end against it.

@@ -36,7 +36,14 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-_ACCESS_ERRORS = ("403", "denied", "permission", "quota", "429", "not_found", "404")
+# Access/quota errors AND transient server-side failures: all are environment
+# problems with the live free-tier API, not faults in our code. A genuine shape
+# bug still surfaces as an AssertionError, which is never in this list.
+_ACCESS_ERRORS = (
+    "403", "denied", "permission", "quota", "429", "rate", "not_found", "404",
+    "500", "502", "503", "unavailable", "timeout", "deadline", "internal",
+    "non-json",  # a truncated/garbled response under load, not a logic error
+)
 
 
 def _skip_if_unavailable(exc: Exception) -> None:

@@ -325,3 +325,129 @@ On-device Llama is deferred behind the same interface, the way ML Kit is for OCR
 **Known debt:** the backend uses `google-generativeai`, which went end-of-life during the
 project (Google now points to the `google-genai` package). It still functions; migration is
 a tracked follow-up, isolated to `backend.py` by the pluggable design.
+
+---
+
+## D18 — On-device execution is AccessibilityService; ADB is the dev harness
+
+**Accepted** · 2026-09-26
+
+Every design doc says actions are "issued as ADB shell commands." That is true for
+a computer driving a phone over USB, and false for the shippable app: an app
+cannot `adb shell` itself — ADB is a host→device protocol. On-device action
+execution, with **no root and no OS modification** (both hard constraints), has
+exactly one path: the **AccessibilityService** API (`dispatchGesture` for
+taps/swipes, `performAction` for clicks and text, `performGlobalAction` for
+back/home).
+
+So there are two execution surfaces, and the docs conflated them:
+
+- **ADB** — the dev/test harness (`executor/`, Phase 0). Drives a connected
+  device from the computer, reusing the Python perception + planner as-is. Fast to
+  build, nothing on-device required. Not shippable.
+- **AccessibilityService** — the real, on-device executor, inside the Android app
+  (Phase 1+). The same service is also the *primary* perception path (the
+  accessibility tree), so one component becomes both eyes and hands.
+
+The [Action](executor/actions.py) model is shared across both, so the planner,
+grounding, and control loop are identical whichever surface issues the gesture.
+Only the bottom layer swaps.
+
+**Consequence for the docs:** where earlier text implies the *app* runs ADB, read
+it as the harness. The app uses AccessibilityService.
+
+---
+
+## D19 — Grounding is a heuristic in Phase 0, an LLM backend later
+
+**Accepted** · 2026-09-26 · mirrors [D4](#d4--detector-is-class-agnostic-typing-is-rule-based) / [D17](#d17--planner-llm-backend-is-pluggable-gemini-flash-first)
+
+`executor/grounding.py` turns a subgoal into a concrete Action by matching subgoal
+keywords to interactable element labels — transparent and debuggable, and it
+avoids a **second** Gemini call per step while the loop is being proven. The real
+Executor will ground with the model (the way the Planner reasons), behind the same
+`ground()` signature.
+
+One subtlety worth keeping: verb-like words ("Go", "Open", "Set") are dropped as
+subgoal *filler* but kept as element *labels*, so a button literally labelled "Go"
+still grounds. A single stopword list broke this — it stripped the word from both
+sides and matched nothing.
+
+---
+
+## D20 — "Open <app>" launches by intent, not by hunting the icon
+
+**Accepted** · 2026-09-26
+
+Home-screen and dock icons carry no text label, so keyword grounding (D19) cannot
+find them — the first real-device run stalled on "Open Chrome" with Chrome's icon
+plainly visible in the dock. Rather than tap the icon, an "open/launch <app>"
+subgoal resolves the app name to an installed package and launches it via its
+launcher intent (`monkey -p <pkg> -c android.intent.category.LAUNCHER 1`).
+
+This is an **OS action, not a per-app integration** ([Working Constraints](CLAUDE.md)):
+it is exactly what the launcher does when you tap the icon, with no knowledge of
+the app's internals. It is also more reliable than tapping — it works from any
+screen.
+
+Name→package resolution is a substring match against `pm list packages`. It works
+where the package contains the app name (chrome, youtube, maps, whatsapp) and not
+where it does not (Play Store = `com.android.vending`); a miss falls back to
+on-screen grounding. Proper resolution (via app labels) or visual grounding of
+icons is the eventual fix — both belong to the LLM-based Executor.
+
+---
+
+## D21 — LLM Executor: ground by reasoning, not keywords (Groq)
+
+**Accepted** · 2026-09-26 · the fix D19 pointed to
+
+The keyword grounder (D19) proved the loop but could not scale: every real task
+exposed a new phrasing or a new screen it mis-read (a button labelled "Go", a
+search box perceived as a button, the word "search" matching the bottom nav tab
+instead of the top search bar). Patching each case was whack-a-mole.
+
+The LLM Executor grounds by *understanding* the screen. `GroqGrounder` hands the
+model the subgoal plus a labelled element list (id, type, text, and a top/mid/
+bottom position) and gets back a structured action — "type into e0 (the search
+box)", "tap e7 (the TV Off result)". It is a pluggable `Grounder` behind the same
+interface, with `HeuristicGrounder` kept as the no-network fallback (the
+NullOCR/NullPlanner pattern again).
+
+**Groq, not xAI Grok.** The user asked for "grok"; the key was a Groq key
+(`gsk_`). Groq serves open models with very low latency — `openai/gpt-oss-120b`
+returned the right element in ~0.8s, which matters for a per-step loop. Endpoint
+is OpenAI-compatible; a User-Agent header is required or Groq's edge returns
+403/1010. Model id is one env-overridable constant (GROQ_MODEL), per the churn
+lesson (D17).
+
+**Grounder returns a `GroundResult`**, not a bare action list, so it can also
+report "done" (subgoal already satisfied → the loop advances) — the model looking
+at the screen is a better judge of "already done" than a text heuristic.
+
+Verified on hardware: "open spotify and play the song TV Off" — a five-step flow
+the heuristic never completed — works, the model picking the search box and the
+correct song row on Spotify's non-standard UI.
+
+---
+
+## D22 — Loop robustness: wake, launch-once, auto-advance, progress-based give-up
+
+**Accepted** · 2026-09-26
+
+Four control-loop fixes, each surfaced only by real-device runs (the stub tests
+all passed):
+
+1. **Wake the device at the start.** A sleeping/locked screen shows only the lock
+   screen, and everything stalls perceiving a clock. `KEYCODE_WAKEUP` dismisses a
+   non-secure lock; a PIN/pattern lock still needs the user, which is correct — we
+   never bypass it.
+2. **Launch an app once per subgoal.** Re-issuing the launch intent every retry
+   reset a running app to its splash screen, so the planner never saw it load.
+3. **Launching auto-advances the "open app" subgoal.** Issuing the intent *is*
+   completing "open the app"; a conservative planner should not be able to stall
+   the loop by retrying a step that already succeeded. Added `Planner.advance()`.
+4. **A retry only counts toward "blocked" when the screen did not change.** A
+   multi-step subgoal ("search and play") legitimately needs several actions; each
+   is progress, not a failed attempt. Attempts reset whenever the screen
+   fingerprint changes, so give-up now means *actually stuck*, not *still working*.

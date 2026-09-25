@@ -111,7 +111,7 @@ Refined from the abstract during implementation:
 | Screen perception — vision path | **Built, verified end-to-end** ([perception/](perception/README.md)) |
 | Screen perception — accessibility tree | Not started |
 | Planner agent | **Built** (decompose + reassess); no control loop yet ([planner/](planner/README.md)) |
-| Executor agent | Not started |
+| Executor agent | **Working over ADB** — control loop + LLM grounder (Groq) drives real multi-step tasks ([executor/](executor/README.md)); on-device (AccessibilityService) pending |
 | Verifier agent | Not started |
 | Shared state / memory | Not started |
 | Android app | Not started |

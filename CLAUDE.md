@@ -17,7 +17,14 @@ Two modules exist so far:
 - **`planner/`** — decompose an instruction into subgoals, and reassess against the live
   screen. Built and unit-tested; no control loop wiring it to an Executor yet.
 
-No accessibility-tree path, Executor, Verifier, shared state, or Android app yet.
+- **`executor/`** — Phase 0 dev harness: an ADB-driven control loop
+  (perceive → plan → ground → execute → verify) that ties perception and planner
+  into a working end-to-end agent against a USB-connected device. Grounding is a
+  keyword heuristic for now; execution is ADB, to be replaced by an on-device
+  AccessibilityService app (see D18). Proven on stubs; not yet run on a physical
+  device here.
+
+No accessibility-tree perception path, real Verifier, shared state, or Android app yet.
 
 The project uses a virtualenv at `.venv/`. **Always invoke it explicitly** — a bare
 `python` hits the system interpreter, which has none of the dependencies.

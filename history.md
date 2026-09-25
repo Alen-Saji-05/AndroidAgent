@@ -131,9 +131,57 @@ reassess loop calls the model every step, so speed and cost dominate ([D17](deci
 The result shipped with 26 model-free tests driven by scripted responses — the logic tested
 without a key or a network, exactly as perception's stubs allowed.
 
+## Phase 5 — The loop closes: Phase 0 executor over ADB
+
+**2026-09-26.** Perception and the Planner existed but nothing connected them. Phase 0
+built `executor/` — a control loop that captures the screen, plans, grounds a subgoal into
+a concrete gesture, executes it, and reassesses — driving a real device over **ADB**.
+
+Building it surfaced a conflation the design docs had carried from the start. They say
+actions are "issued as ADB shell commands," which quietly assumes a computer driving a
+phone. An app cannot ADB itself; on-device execution without root or OS modification is the
+**AccessibilityService** API. So there are two execution surfaces, not one: ADB is the dev
+harness (fast, reuses all the Python, not shippable), and AccessibilityService is the real
+on-device path — and conveniently the same service is the primary perception path too. The
+`Action` model spans both, so the planner, grounding, and loop are indifferent to which
+issues the gesture ([D18](decisions.md)). Choosing to prove the loop over ADB first was the
+Phase 0 recommendation, and it paid off: a full run works end to end on stubs, with the
+confirmation gate firing on the sensitive step alone before anything executes.
+
+Grounding — subgoal to gesture — is a keyword heuristic for now, not an LLM, to keep a
+second model call out of the loop while it is proven ([D19](decisions.md)). Building it
+turned up a small but real bug: a button labelled "Go" could never be matched because the
+word was a stopword stripped from both sides. The fix — filler words versus action verbs —
+is the kind of thing only a running loop reveals.
+
+## Phase 6 — The LLM Executor, and a working agent
+
+**2026-09-26.** Phase 0's keyword grounder proved the loop but hit its ceiling fast: each
+real task on a real phone exposed a new phrasing or a new screen it mis-read. The fix,
+always the plan, was the **LLM Executor** — ground by understanding the screen rather than
+matching words ([D21](decisions.md)).
+
+`GroqGrounder` hands the model the subgoal and a labelled element list and gets back a
+structured action. It runs on Groq (`openai/gpt-oss-120b`, ~0.8s a call — the low latency
+matters when you call it every step) and slots behind the same `Grounder` interface, with
+the heuristic kept as the offline fallback. The user asked for "grok"; the key was a Groq
+key — a different service, and a good one for this.
+
+But the LLM grounder alone did not make the hard task work. Getting "play the song TV Off"
+to complete took four control-loop fixes ([D22](decisions.md)), and every one came from
+watching a real run fail: the phone was **asleep** (the agent was driving a lock screen);
+"open Spotify" **relaunched** the app every retry, resetting it; launching never
+**advanced** the subgoal; and a multi-step subgoal was **blocked** after four steps even
+while it was visibly progressing. None of these were visible to the stub tests — they only
+appear against real hardware, which is the running theme of this project.
+
+With those in place, the agent opened Spotify, navigated to search, typed "TV Off", and
+tapped the correct song — the model picking the real search box that perception had
+mislabelled as a button, and the right row among many. The song played.
+
 ## Where things stand
 
-Two of seven components are built. Perception emits a stable `UIElement` schema; the
+The agent now runs real tasks end to end. Perception emits a stable `UIElement` schema; the
 Planner consumes it (via a compact screen digest) and produces a revisable subgoal plan.
 Both were built the same way — pluggable backend, stub-driven tests, JSON contracts — and
 that discipline is now the house style rather than a one-off.

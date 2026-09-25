@@ -58,7 +58,8 @@ Early. The vision perception path is built and tested; the agents are not.
 | Screen perception — vision | **Built & verified end-to-end** — [perception/](perception/README.md) |
 | Screen perception — a11y tree | Not started |
 | Planner | **Built** (decompose + reassess) — [planner/](planner/README.md) |
-| Executor / Verifier | Not started |
+| Executor (ADB harness + LLM grounder) | **Working** — [executor/](executor/README.md) |
+| Verifier | Not started |
 | Shared state & memory | Not started |
 | Android app | Not started |
 
@@ -130,6 +131,7 @@ Project-defining, not preferences:
 | [CLAUDE.md](CLAUDE.md) | Guidance for AI coding assistants |
 | [perception/README.md](perception/README.md) | Perception module reference |
 | [planner/README.md](planner/README.md) | Planner module reference |
+| [executor/README.md](executor/README.md) | Executor + control loop reference |
 
 ## References
 
